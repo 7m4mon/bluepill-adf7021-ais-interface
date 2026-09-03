@@ -2,6 +2,8 @@
 
 A small bench-test interface for feeding simulated AIS targets into an AIS receiver or chart plotter.
 
+<img width="1926" height="2205" alt="Image" src="https://github.com/user-attachments/assets/ad5c90ec-f1c4-4f88-93ef-8c4624801fd4" />
+
 ## Why I Built It
 
 I originally looked at using a commercial AIS test unit such as the Quark-elec AT011.
