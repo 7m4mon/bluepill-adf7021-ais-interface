@@ -69,3 +69,7 @@ The reusable part of the project is the **AIS target / scenario generation and p
 AIS frequencies are used for maritime safety.
 
 Any RF testing must be performed only in a closed test environment using suitable shielding, attenuation, dummy loads, or direct coupling, and in accordance with local regulations.
+
+## Article
+
+[bluepill-adf7021-ais-interface](https://nomulabo.com/bluepill-adf7021-ais-interface/)
