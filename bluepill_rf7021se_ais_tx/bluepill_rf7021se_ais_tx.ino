@@ -690,14 +690,26 @@ static bool buildAisFrameBitsFromPayload(const uint8_t *payloadBits, uint16_t pa
                                          uint8_t *outBits, uint16_t &outLen) {
   outLen = 0;
 
+  // AIVDM armoring exposes each AIS message octet MSB first, while HDLC sends
+  // every octet least-significant bit first over the air. Without this
+  // conversion a valid Message 18 starts as 0x48 on input but is received as
+  // 0x12 (Message 4), and the MMSI is byte-wise bit-reversed as well.
+  if ((payloadLen & 7U) != 0U) {
+    DBG.println("AIS payload is not octet aligned");
+    return false;
+  }
+
   uint8_t dataFcs[MAX_FRAME_BITS];
   uint16_t dataFcsLen = 0;
 
-  for (uint16_t i = 0; i < payloadLen; i++) {
-    if (!appendBit(dataFcs, dataFcsLen, MAX_FRAME_BITS, payloadBits[i])) return false;
+  for (uint16_t byteOffset = 0; byteOffset < payloadLen; byteOffset += 8) {
+    for (uint8_t bit = 0; bit < 8; bit++) {
+      if (!appendBit(dataFcs, dataFcsLen, MAX_FRAME_BITS,
+                     payloadBits[byteOffset + 7U - bit])) return false;
+    }
   }
 
-  uint16_t fcs = hdlcFcs16(payloadBits, payloadLen);
+  uint16_t fcs = hdlcFcs16(dataFcs, dataFcsLen);
   for (uint8_t i = 0; i < 16; i++) {
     if (!appendBit(dataFcs, dataFcsLen, MAX_FRAME_BITS, (fcs >> i) & 0x01)) return false;
   }
@@ -748,11 +760,12 @@ static bool buildAisFrameBitsFromPayload(const uint8_t *payloadBits, uint16_t pa
   return true;
 }
 
-static bool buildFrameFromAivdm(const char *line) {
+static bool buildFrameFromAivdm(const char *line, bool &checksumOk) {
   g_payloadBitLen = 0;
   g_frameBitLen = 0;
 
-  if (!nmeaChecksumOk(line)) {
+  checksumOk = nmeaChecksumOk(line);
+  if (!checksumOk) {
     DBG.println("WARN: NMEA checksum error");
     if (g_strictChecksum) return false;
   }
@@ -811,7 +824,12 @@ static bool transmitBuiltAisFrame() {
   printN();
 
   bool locked = programRadioBase(true, 0);  // normal data mode
-  (void)locked;
+  if (!locked) {
+    radioOff();
+    oledShowStatusOnly("TX: no lock");
+    DBG.println("AIS TX failed: PLL unlock");
+    return false;
+  }
 
   dclkAsOutputLow();
   setPaActive(true);
@@ -862,20 +880,32 @@ static void startCarrier() {
 static void handleNmeaLine(const char *line) {
   if (strncmp(line, "!AIVDM", 6) != 0 && strncmp(line, "!AIVDO", 6) != 0) {
     DBG.print("USB ignored: "); DBG.println(line);
+    USB_NMEA.println("TX NG: INVALID INPUT");
     return;
   }
 
   if (g_busy) {
     DBG.print("USB AIVDM ignored, TX busy: "); DBG.println(line);
+    USB_NMEA.println("TX NG: BUSY");
     return;
   }
 
   DBG.print("USB RX: "); DBG.println(line);
   oledShowSentence(line, "RX: accepted");
-  if (buildFrameFromAivdm(line)) {
-    transmitBuiltAisFrame();
+  bool checksumOk = false;
+  if (buildFrameFromAivdm(line, checksumOk)) {
+    if (transmitBuiltAisFrame()) {
+      USB_NMEA.println(checksumOk ? "TX OK" : "TX OK: CHECKSUM WARNING");
+    } else {
+      USB_NMEA.println("TX NG: NO LOCK");
+    }
   } else {
     oledShowStatusOnly("RX: parse error");
+    if (!checksumOk && g_strictChecksum) {
+      USB_NMEA.println("TX NG: CHECKSUM ERROR");
+    } else {
+      USB_NMEA.println("TX NG: PARSE ERROR");
+    }
   }
 }
 
@@ -897,6 +927,7 @@ static void serviceUsbNmea() {
       } else {
         g_usbLineLen = 0;
         DBG.println("USB line buffer overflow");
+        USB_NMEA.println("TX NG: LINE TOO LONG");
       }
     }
   }
