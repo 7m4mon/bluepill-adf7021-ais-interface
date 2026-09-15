@@ -1,3 +1,4 @@
+// Variant: OLED startup: wait 800 ms; I2C 400 kHz; one display update per processed AIS sentence, after TX or on error.
 /*
   Bluepill + RF7021SE / ADF7021 AIS transmitter from USB AIVDM
   Quiet debug version: no periodic STATUS spam; PB13 LED linked to PAC/PA-TX
@@ -99,7 +100,7 @@ static const uint32_t DBG_BAUD = 115200;
 
 // Roger Clark Arduino_STM32 core (STM32F1):
 // I2C1 remap selects PB8=SCL and PB9=SDA.
-TwoWire OLEDWire(1, I2C_REMAP);
+TwoWire OLEDWire(1, I2C_REMAP | I2C_FAST_MODE); // 400 kHz
 static bool g_oledOk = false;
 static uint8_t g_oledBuf[OLED_WIDTH * OLED_HEIGHT / 8];
 
@@ -820,13 +821,11 @@ static bool transmitBuiltAisFrame() {
   g_mode = MODE_AIS_BURST;
 
   DBG.println("AIS TX start");
-  oledShowStatusOnly("TX: sending...");
   printN();
 
   bool locked = programRadioBase(true, 0);  // normal data mode
   if (!locked) {
     radioOff();
-    oledShowStatusOnly("TX: no lock");
     DBG.println("AIS TX failed: PLL unlock");
     return false;
   }
@@ -842,7 +841,6 @@ static bool transmitBuiltAisFrame() {
   delayMicroseconds(1200);
 
   radioOff();
-  oledShowStatusOnly("TX: done");
   DBG.println("AIS TX done");
   return true;
 }
@@ -891,19 +889,21 @@ static void handleNmeaLine(const char *line) {
   }
 
   DBG.print("USB RX: "); DBG.println(line);
-  oledShowSentence(line, "RX: accepted");
   bool checksumOk = false;
   if (buildFrameFromAivdm(line, checksumOk)) {
     if (transmitBuiltAisFrame()) {
+      oledShowSentence(line, "TX: done");
       USB_NMEA.println(checksumOk ? "TX OK" : "TX OK: CHECKSUM WARNING");
     } else {
+      oledShowSentence(line, "TX: no lock");
       USB_NMEA.println("TX NG: NO LOCK");
     }
   } else {
-    oledShowStatusOnly("RX: parse error");
     if (!checksumOk && g_strictChecksum) {
+      oledShowSentence(line, "RX: checksum error");
       USB_NMEA.println("TX NG: CHECKSUM ERROR");
     } else {
+      oledShowSentence(line, "RX: parse error");
       USB_NMEA.println("TX NG: PARSE ERROR");
     }
   }
@@ -1065,6 +1065,8 @@ void setup() {
   // Roger Clark Arduino_STM32 core:
   // I2C1 remapped to PB8=SCL / PB9=SDA by OLEDWire(1, I2C_REMAP).
   // The old core has no setSCL()/setSDA() methods.
+  // Allow OLED power and module reset to settle on USB power-up.
+  delay(800);
   OLEDWire.begin();
   g_oledOk = oledBegin();
   if (g_oledOk) {
@@ -1073,7 +1075,6 @@ void setup() {
   pinMode(PIN_UART_RX, INPUT_PULLUP);  // re-apply after Serial1.begin()
   pinMode(PIN_PB12_UNUSED, INPUT);      // keep PB12 high-Z/unused
 
-  delay(800);
   DBG.println();
   DBG.println("Bluepill + RF7021SE/ADF7021 USB-AIVDM AIS TX final-ish test");
   DBG.println("USB CDC Serial: raw !AIVDM/!AIVDO input");
