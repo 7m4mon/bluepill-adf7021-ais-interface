@@ -1,3 +1,5 @@
+// Debug variant: omit per-AIS-transmission RF calculation and STATUS logs.
+// Startup, configuration, and manual diagnostics remain enabled.
 // Variant: OLED startup: wait 800 ms; I2C 400 kHz; one display update per processed AIS sentence, after TX or on error.
 /*
   Bluepill + RF7021SE / ADF7021 AIS transmitter from USB AIVDM
@@ -406,9 +408,9 @@ static void ceReset() {
   dataPinHiZ();
   idleBus();
   digitalWrite(PIN_ADF_CE, LOW);
-  delay(30);
-  digitalWrite(PIN_ADF_CE, HIGH);
   delay(20);
+  digitalWrite(PIN_ADF_CE, HIGH);
+  delay(15);
 }
 
 // -----------------------------------------------------------------------------
@@ -590,7 +592,7 @@ static bool programRadioBase(bool paEnable, uint8_t r15TestMode) {
   return locked;
 }
 
-static void radioOff() {
+static void radioOff(bool reportStatus) {
   setPaActive(false);
   dclkAsOutputLow();
   digitalWrite(PIN_ADF_DCLK, LOW);
@@ -600,8 +602,10 @@ static void radioOff() {
   dclkAsInputPulldown();
   g_busy = false;
   g_mode = MODE_OFF;
-  DBG.println("TX OFF");
-  status();
+  if (reportStatus) {
+    DBG.println("TX OFF");
+    status();
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -821,11 +825,10 @@ static bool transmitBuiltAisFrame() {
   g_mode = MODE_AIS_BURST;
 
   DBG.println("AIS TX start");
-  printN();
 
   bool locked = programRadioBase(true, 0);  // normal data mode
   if (!locked) {
-    radioOff();
+    radioOff(false);
     DBG.println("AIS TX failed: PLL unlock");
     return false;
   }
@@ -840,7 +843,7 @@ static bool transmitBuiltAisFrame() {
   // GFSK transmit latency is several bit periods. Keep TX on briefly.
   delayMicroseconds(1200);
 
-  radioOff();
+  radioOff(false);
   DBG.println("AIS TX done");
   return true;
 }
@@ -983,7 +986,7 @@ static void handleDebugChar(char c) {
     case 'c': startCarrier(); break;
     case 'l': DBG.println("PB13 LED forced ON test"); setTxLed(true); status(); break;
     case 'o': DBG.println("PB13 LED forced OFF test"); setTxLed(false); status(); break;
-    case '0': radioOff(); break;
+    case '0': radioOff(true); break;
     case 'x': {
       static const char sample[] = "!AIVDM,1,1,,A,15Muq@002>G?svP00<:O?vN60<0,0*7C";
       handleNmeaLine(sample);
@@ -1086,7 +1089,7 @@ void setup() {
   DBG.println("WARNING: dummy load / attenuator / shielded / direct-coupled setup only.");
 
   ceReset();
-  radioOff();
+  radioOff(true);
   printN();
   printWords();
   help();

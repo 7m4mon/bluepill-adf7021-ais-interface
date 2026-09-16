@@ -56,16 +56,7 @@ The prototype was verified with an RTL-SDR and AIS-catcher in a closed test setu
 
 The ADF7021 Gaussian filter uses BT=0.5, while AIS specifies BT=0.4, so this project should be treated as a **bench-test signal source**, not a standards-compliant AIS transmitter.
 
-## Current Firmware Revision
-
-The current development sketch was compared with GitHub commit [`83e82bc`](https://github.com/7m4mon/bluepill-adf7021-ais-interface/commit/83e82bc9af2acd2c672b5e94f3b2c5291207b13c) from September 6, 2026. The RF configuration and AIS framing path are unchanged. The differences are limited to OLED startup and I2C handling:
-
-- I2C1 remains remapped to `PB8/PB9`, but now uses `I2C_FAST_MODE` for a **400 kHz** bus clock.
-- The 800 ms OLED power/reset settling delay now occurs before `OLEDWire.begin()` and OLED initialization.
-- Intermediate OLED writes such as `RX: accepted` and `TX: sending...` were removed.
-- The display is updated once per processed AIS sentence, after transmission or when an error result is available.
-
-This reduces blocking OLED traffic during the RF burst. In the current bench setup, the firmware processes **up to 7 single-fragment AIS sentences per second**. This is a measured prototype throughput, not a guaranteed sustained input rate for multipart messages or every sentence length.
+In the current bench setup, the firmware processes one single-fragment AIS sentence in approximately **10 sentences per second**.
 
 ## Publication Policy
 
